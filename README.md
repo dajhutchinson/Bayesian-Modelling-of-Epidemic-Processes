@@ -10,6 +10,8 @@ Dom Hutchinson's Master's project for the School of Mathematics at the Universit
 ## `Code/`
 `Code/` contains the code I wrote for this project. All code is in python. For each main `.py` file I have write an accompanying Jupyter Notebook with some test code.
 
+A `requirements.txt` file is provided and can be used to install required packages using `pip install -r requirements.txt`. All packages used in this project are common and likely already installed on your machine.
+
 |  Description | Python File | Notebook  |
 | :------------ | :------------ | :------------ |
 | Mathematical models  | `Models.py`  | ` Models.ipynb` |
