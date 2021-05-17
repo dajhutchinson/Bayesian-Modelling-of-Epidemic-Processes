@@ -1,5 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+
+from matplotlib.gridspec import GridSpec
 from scipy import stats
 
 def plot_accepted_observations(ax:plt.Axes,x_obs:int,y_obs:[[float]],accepted_observations:[[float]],predicted_model:"Model",dim=0) -> plt.Axes:
@@ -35,7 +38,7 @@ def plot_accepted_observations(ax:plt.Axes,x_obs:int,y_obs:[[float]],accepted_ob
 
     return ax
 
-def plot_parameter_posterior(ax:plt.Axes,name:str,accepted_parameter:[float],predicted_val:float,prior:"stats.Distribution",dim=0) -> plt.Axes:
+def plot_parameter_posterior(ax:plt.Axes,name:str,accepted_parameter:[float],predicted_val:float,prior:"stats.Distribution",dim=0,weights=None) -> plt.Axes:
     """
     DESCRIPTION
     plot posterior of a parameter.
@@ -50,8 +53,10 @@ def plot_parameter_posterior(ax:plt.Axes,name:str,accepted_parameter:[float],pre
     RETURNS
     plt.Axes - axes on which plot was made
     """
+    weights=weights if weights else [1/len(accepted_parameter)]*len(accepted_parameter)
+
     # plot prior used
-    x=np.linspace(min(accepted_parameter+[prior.ppf(.01)-1]),max(accepted_parameter+[prior.ppf(.99)+1]),100)
+    x=np.linspace(min(accepted_parameter+[prior.ppf(.01)]),max(accepted_parameter+[prior.ppf(.99)]),100)
     # x=np.linspace(prior.ppf(.01),prior.ppf(.99),100)
     ax.plot(x,prior.pdf(x),"k-",lw=2, label='Prior')
 
@@ -59,7 +64,7 @@ def plot_parameter_posterior(ax:plt.Axes,name:str,accepted_parameter:[float],pre
     ax.hist(accepted_parameter,density=True)
 
     # plot smooth posterior (ie KDE)
-    density=stats.kde.gaussian_kde(accepted_parameter)
+    density=stats.kde.gaussian_kde(accepted_parameter,weights=weights)
     ax.plot(x,density(x),"--",lw=2,c="orange",label="Posterior KDE")
 
     ymax=ax.get_ylim()[1]
@@ -118,47 +123,12 @@ def plot_MCMC_trace(ax:plt.Axes,name:str,accepted_parameter:[float],predicted_va
 
     ax.set_ylabel(name)
     ax.set_xlabel("t")
-    ax.set_title("Trace {}".format(name))
+    ax.set_title("Trace for {}".format(name))
     ax.margins(0)
 
     return ax
 
-def plot_smc_posterior(ax:plt.Axes,name:str,parameter_values:[float],weights:[float],predicted_val:float,prior:"stats.Distribution",dim=0) -> plt.Axes:
-    """
-    DESCRIPTION
-    plot posterior of a parameter from SMC algorithm.
-
-    PARAMETERS
-    ax (plt.Axes) - axes to plot on.
-    name (str) - name of parameter.
-    parameter_values ([float]) - values of parameter used.
-    weights ([float]) - weights of each parameter used (must align with `parameter_values`)
-    predicted_val (float) - predicted value for parameter (likely mean of `parameter_values` weighted by `weights`)
-    prior (stats.Distribution) - prior used when sampling for parameter.
-
-    RETURNS
-    plt.Axes - axes on which plot was made
-    """
-    # plot prior used
-    x=np.linspace(prior.ppf(.01)-1,prior.ppf(.99)+1,100)
-    # x=np.linspace(prior.ppf(.01),prior.ppf(.99),100)
-    ax.plot(x,prior.pdf(x),"k-",lw=2, label='Prior')
-
-    density=stats.kde.gaussian_kde(parameter_values,weights=weights)
-    x=np.linspace(min(parameter_values)*.9,max(parameter_values)*1.1,100)
-    ax.plot(x,density(x),c="blue",label="Posterior")
-
-    ymax=ax.get_ylim()[1]
-    ax.vlines(predicted_val,ymin=0,ymax=ymax,colors="orange",label="Predicted Value")
-    ax.set_xlabel(name)
-    ax.set_ylabel("P")
-    ax.set_title("Posterior for {}".format(name))
-    ax.margins(0)
-    if (dim==0): ax.legend()
-
-    return ax
-
-def plot_sir_model(ax:plt.Axes, model:"SIRModel",include_susceptible=True):
+def plot_sir_model(ax:plt.Axes, model:"SIRModel",include_susceptible=True) -> plt.Axes:
 
     ax.margins(0)
 
@@ -205,7 +175,7 @@ def plot_sir_model(ax:plt.Axes, model:"SIRModel",include_susceptible=True):
 
     return
 
-def stochastic_sir_model_realisations(ax,model,n_reals,labels=False):
+def stochastic_sir_model_realisations(ax:plt.Axes,model,n_reals:int,labels=False) -> plt.Axes:
     xs=model.x_obs
 
     y_min=0,
@@ -253,5 +223,144 @@ def stochastic_sir_model_realisations(ax,model,n_reals,labels=False):
     ax.set_xticks(list(range(x_min,x_max,7))+[x_max])
     ax.set_yticks(np.linspace(0, y_max, 5))
     ax.set_yticklabels(["{:,.0f}".format(x) for x in np.linspace(0, y_max, 5)])
+
+    return ax
+
+def plot_joint_parameter_posteriors(fig:plt.Figure,parameter_names:[str],accepted_parameters:[[float]],predicted_vals:[float],priors:["stats.Distribution"],weights=None) -> plt.Figure:
+
+    if (len(parameter_names)!=2): parameter_names=["",""]
+    for p in accepted_parameters:
+        if (len(p)!=2): raise Exception("All `accepted_parameters` must be 2d exactly.")
+    if (len(priors)!=2): raise Exception("Exactly 2 `priors` must be provided.")
+
+    weights = weights if (weights) else [1/len(accepted_parameters) for _ in range(len(accepted_parameters))]
+
+    acc_params_x=[p[0] for p in accepted_parameters]
+    acc_params_y=[p[1] for p in accepted_parameters]
+
+    fig = plt.figure()
+    gs = GridSpec(4, 4)
+
+    ax_scatter = fig.add_subplot(gs[1:4, 0:3])
+    ax_hist_x = fig.add_subplot(gs[0,0:3])
+    ax_hist_y = fig.add_subplot(gs[1:4, 3])
+
+    # plot scatter
+    sns.kdeplot(acc_params_x,acc_params_y,cmap="Blues", shade=True,weights=weights,ax=ax_scatter)
+
+    # plot accepted data
+    ax_hist_x.hist(acc_params_x,density=True)
+    ax_hist_y.hist(acc_params_y,orientation='horizontal',density=True)
+
+    # plot priors used
+    hist_x_xs=np.linspace(min(acc_params_x+[priors[0].ppf(.01)]),max(acc_params_x+[priors[0].ppf(.99)]),100)
+    ax_hist_x.plot(hist_x_xs,priors[0].pdf(hist_x_xs),"k-",lw=2, label='Prior')
+    hist_y_xs=np.linspace(min(acc_params_y+[priors[1].ppf(.01)]),max(acc_params_y+[priors[1].ppf(.99)]),100)
+    ax_hist_y.plot(priors[1].pdf(hist_y_xs),hist_y_xs,"k-",lw=2, label='Prior')
+
+    # plot smooth posterior (ie KDE)
+    density_x=stats.kde.gaussian_kde(acc_params_x,weights=weights)
+    ax_hist_x.plot(hist_x_xs,density_x(hist_x_xs),"--",lw=2,c="orange",label="Posterior KDE")
+    density_y=stats.kde.gaussian_kde(acc_params_y,weights=weights)
+    ax_hist_y.plot(density_y(hist_y_xs),hist_y_xs,"--",lw=2,c="orange",label="Posterior KDE")
+
+    # plot posterior mean
+    ax_hist_x.vlines(predicted_vals[0],ymin=0,ymax=ax_hist_x.get_ylim()[1],colors="orange")
+    ax_hist_y.hlines(predicted_vals[1],xmin=0,xmax=ax_hist_y.get_xlim()[1],colors="orange")
+
+    # make legend
+    f = lambda m,l,c: ax_scatter.plot([],[], marker=m,color=c,ls=l)[0]
+    handles=[f(None,"-","black"),f(None,"-","orange"),f(None,"--","orange"),f("s","","#1f77b4")]
+
+#     ax_scatter.legend(handles=handles,labels=["Prior","Posterior Mean","Posterior KDE","Accepted"],fontsize=18)
+    ax_scatter.set_xlim((hist_x_xs[0],hist_x_xs[-1]))
+    ax_scatter.set_ylim((hist_y_xs[0],hist_y_xs[-1]))
+
+    ax_scatter.set_xlabel(parameter_names[0])
+    ax_scatter.set_ylabel(parameter_names[1])
+
+    ax_scatter.margins(0)
+    ax_hist_x.margins(0)
+    ax_hist_y.margins(0)
+
+    title_ending="" if "" in parameter_names else " for {} & {}".format(parameter_names[0],parameter_names[1])
+    fig.suptitle("Joint and Marginal Posteriors{}.".format(title_ending))
+
+    return fig
+
+def plot_sir_model_ci(ax:plt.Axes,x_obs:[[int]],y_obs:[[float]],predicted_model:"SIRModel",accepted_params:[[float]],weights=None,alpha=0.05,legend=True):
+    xs=[x[0] for x in x_obs]
+    obs=[]
+
+    weights=weights if(weights) else [1/len(accepted_params) for _ in range(len(accepted_params))]
+
+    for _ in range(10000):
+        ind=np.random.choice(len(accepted_params),size=1,p=weights)[0]
+        params=accepted_params[ind]
+        temp_model=predicted_model.copy(params)
+        new_obs=temp_model.observe()
+        obs.append(new_obs)
+
+    # Plot true given data
+    ax.plot(xs,[y[0] for y in y_obs],c="green") # label="Observed I"
+    ax.plot(xs,[y[1] for y in y_obs],c="blue") # label="Observed I"
+    ax.plot(xs,[y[2] for y in y_obs],c="red",) # label="Observed R"
+
+    # Calculate & Plot Predictions
+    means=[]
+    upper_bounds=[]
+    lower_bounds=[]
+
+    for i in range(len(y_obs)):
+        y_is=[o[i] for o in obs]
+
+        mean=np.mean(y_is,axis=0)
+        ub=np.percentile(y_is,100*(1-alpha/2),axis=0)
+        lb=np.percentile(y_is,100*(alpha/2),axis=0)
+
+        means+=[mean]
+        upper_bounds+=[ub]
+        lower_bounds+=[lb]
+
+    # S
+    i=0
+    ax.plot(xs,[y[i] for y in predicted_model.observe()],c="green",ls="--") # label="Predicted I"
+    ax.fill_between([x for x in xs],[l[i] for l in lower_bounds],[u[i] for u in upper_bounds]
+                   ,color="green",alpha=.2)
+
+    # I
+    i=1
+    ax.plot(xs,[y[i] for y in predicted_model.observe()],c="blue",ls="--") # label="Predicted I"
+    ax.fill_between([x for x in xs],[l[i] for l in lower_bounds],[u[i] for u in upper_bounds]
+                   ,color="blue",alpha=.2)
+
+    # R
+    i=2
+    ax.plot(xs,[y[i] for y in predicted_model.observe()],c="red",ls="--") # label="Predicted R"
+    ax.fill_between([x for x in xs],[l[i] for l in lower_bounds],[u[i] for u in upper_bounds]
+                   ,color="red",alpha=.2)
+
+    # make legend
+    if (legend):
+        f = lambda m,l,c: plt.plot([],[], marker=m,color=c,ls=l)[0]
+        handles = [f("s","",c) for c in ["green","blue","red"]]
+        handles+= [f(None,l,"black") for l in ["-","--"]]
+
+        ax.legend(handles=handles,labels=["S","I","R","Observed","Fitted"],loc="upper left",ncol=2)
+
+    y_min=0
+    y_max=1000*(predicted_model.population_size//1000+1)
+
+    ax.margins(0)
+    ax.grid()
+    ax.set_ylim(y_min,y_max)
+
+    ax.set_title("{}% CI for Population Sizes.".format(int(100*(1-alpha))),fontsize=20)
+
+    ax.set_xlabel("Day",fontsize=16)
+    ax.set_ylabel("Population Size",fontsize=16)
+
+    ax.set_xticks(list(range(0,max(xs),7))+x_obs[-1])
+    ax.set_yticks(np.linspace(0, y_max, 5))
 
     return ax
